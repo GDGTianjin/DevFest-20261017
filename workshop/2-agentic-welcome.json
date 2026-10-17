@@ -1,0 +1,132 @@
+{
+  "name": "GDG 现场智能提问墙 (飞书 + Gemini)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "🎤 GDG 现场提问",
+        "formDescription": "提交你的问题，AI 将自动分析并推送给嘉宾，留下邮箱还可获取精选 Google 资料包！",
+        "formFields": {
+          "values": [
+            { "fieldLabel": "你的称呼", "placeholder": "例如：Alex", "requiredField": true },
+            { "fieldLabel": "你的问题", "fieldType": "textarea", "placeholder": "请输入你最想问的问题...", "requiredField": true },
+            { "fieldLabel": "联系邮箱", "fieldType": "email", "placeholder": "name@example.com", "requiredField": false }
+          ]
+        },
+        "options": {
+          "buttonLabel": "提交问题",
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "🎉 已收到你的问题！AI 正在分析中，结果将发送至你的邮箱。"
+            }
+          }
+        }
+      },
+      "id": "node-01",
+      "name": "填写表单",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [180, 400],
+      "webhookId": "gdg-ask-2024"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fd=$input.first().json,q=fd['你的问题']||'',p='你是GDG活动现场的智能技术助手，请分析用户问题，仅返回如下JSON（不要任何其他文字）：\\n{\"topic\":\"AI_LLM\",\"urgency\":\"normal\",\"summary\":\"20字内摘要\",\"tags\":[\"标签1\",\"标签2\"],\"question_type\":\"how-to\",\"preliminary_answer\":\"100字内初步解答\",\"reply_hint\":\"30字内友好回应\"}\\ntopic枚举(仅选一)：AI_LLM(涉及AI/Gemini/大模型/Agent/RAG/Prompt)|CLOUD_GCP(涉及GCP/CloudRun/Firebase/Kubernetes/云架构)|MOBILE_FLUTTER(涉及Flutter/Android/Dart/iOS/移动端)|WEB_FRONTEND(涉及Web/前端/React/Chrome/PWA)|OTHER(其他所有话题)\\nurgency：high(部署故障或阻塞性问题)/normal(普通技术问题)/low(概念性讨论或闲聊)\\ntags：提取2-4个关键技术词的数组\\nquestion_type：how-to(如何实现)/debug(排查问题)/concept(概念理解)/opinion(观点讨论)/other\\npreliminary_answer：基于你的技术知识给出简洁准确的初步解答，控制在100字内；若问题太模糊则填写\"需要更多上下文才能准确解答\"\\nreply_hint：给提问者的一句话友好回应，引导他期待现场讨论\\n\\n用户问题：'+q;return [{json:{...fd,geminiBody:JSON.stringify({contents:[{parts:[{text:p}]}],generationConfig:{response_mime_type:'application/json'}}),_name:fd['你的称呼']||'朋友',_q:q,_email:fd['联系邮箱']||''}}];"
+      },
+      "id": "node-02",
+      "name": "构建请求",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=YOUR_GEMINI_API_KEY",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.geminiBody }}",
+        "options": {}
+      },
+      "id": "node-03",
+      "name": "Gemini 分析",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input=$input.first().json,raw=input.candidates?.[0]?.content?.parts?.[0]?.text||'{}';\nlet cl;try{cl=JSON.parse(raw);}catch(e){cl={topic:'OTHER',urgency:'normal',summary:(input._q||'').slice(0,20),tags:[],question_type:'other',preliminary_answer:'需要更多上下文才能准确解答',reply_hint:'感谢你的提问！'};}\nconst rm={AI_LLM:{label:'🤖 AI & LLM',color:'purple',res:[{t:'Google AI Studio — 免费体验 Gemini API',u:'https://aistudio.google.com/'},{t:'Gemini API 官方文档',u:'https://ai.google.dev/gemini-api/docs'},{t:'Vertex AI 快速入门 Codelab',u:'https://codelabs.developers.google.com/codelabs/gemini-vertex-ai-tour'}]},CLOUD_GCP:{label:'☁️ Cloud & GCP',color:'blue',res:[{t:'Google Cloud Skills Boost — 免费学习路径',u:'https://cloudskillsboost.google/'},{t:'Cloud Run 官方文档',u:'https://cloud.google.com/run/docs'},{t:'GCP 架构中心 — 最佳实践参考',u:'https://cloud.google.com/architecture'}]},MOBILE_FLUTTER:{label:'📱 Mobile & Flutter',color:'turquoise',res:[{t:'Flutter 官方文档',u:'https://docs.flutter.dev/'},{t:'Firebase 快速入门指南',u:'https://firebase.google.com/docs/guides'},{t:'Flutter Codelabs 合集',u:'https://docs.flutter.dev/codelabs'}]},WEB_FRONTEND:{label:'🌐 Web & 前端',color:'green',res:[{t:'web.dev 官方学习路径',u:'https://web.dev/learn'},{t:'Chrome for Developers',u:'https://developer.chrome.com/'},{t:'PageSpeed Insights — 性能测速工具',u:'https://pagespeed.web.dev/'}]},OTHER:{label:'💬 综合话题',color:'grey',res:[{t:'Google Codelabs — 动手实验合集',u:'https://codelabs.developers.google.com/'},{t:'GDG 社区主页',u:'https://developers.google.com/community/gdg'},{t:'Google Developers 官方博客',u:'https://developers.googleblog.com/'}]}};\nconst td=rm[cl.topic]||rm.OTHER,name=input._name||'朋友',q=input._q||'',email=input._email||'';\nconst urgMap={high:'⚠️ 紧急',normal:'🔵 普通',low:'🔘 低'};\nconst qtMap={'how-to':'🔧 操作指南',debug:'🐛 问题排查',concept:'💡 概念理解',opinion:'💬 观点讨论',other:'❓ 其他'};\nconst tags=Array.isArray(cl.tags)?cl.tags.map(t=>'#'+t).join('  '):''\nconst qtLabel=qtMap[cl.question_type]||'❓ 其他';\nconst pa=cl.preliminary_answer||'暂无初步解答';\nconst feishuCard=JSON.stringify({msg_type:'interactive',card:{header:{title:{content:'🔔 新提问 · '+td.label,tag:'plain_text'},template:td.color},elements:[{tag:'div',fields:[{is_short:true,text:{tag:'lark_md',content:'**提问者**\\n'+name}},{is_short:true,text:{tag:'lark_md',content:'**紧迫度**\\n'+(urgMap[cl.urgency]||'🔵 普通')}},{is_short:true,text:{tag:'lark_md',content:'**类型**\\n'+qtLabel}}]},{tag:'div',text:{tag:'lark_md',content:'**❓ 问题内容**\\n'+q}},{tag:'hr'},{tag:'div',text:{tag:'lark_md',content:'**🤖 AI 初步解答**\\n'+pa}},{tag:'hr'},{tag:'note',elements:[{tag:'plain_text',content:'📝 '+cl.summary+(tags?'  |  🏷️ '+tags:'')+'  ·  GDG 智能提问墙 n8n × Gemini'}]}]}});\nconst rl=td.res.map(r=>`<li><a href=\"${r.u}\" style=\"color:#1a73e8;text-decoration:none;\">${r.t}</a></li>`).join('');\nconst emailHtml=`<!DOCTYPE html><html><head><meta charset='utf-8'></head><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#f5f5f5;margin:0;padding:32px 16px;'><div style='max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 2px 8px rgba(0,0,0,.06);'><h2 style='color:#1a1a1a;margin-top:0;'>Hi ${name}，</h2><p style='color:#444;font-size:16px;line-height:1.6;'>感谢你在 <strong>GDG 活动现场</strong>提问！🎉 你的问题已归类到 <strong>${td.label}</strong>，Gemini 已为你生成了初步解答：</p><div style='background:#f0f4ff;border-left:4px solid #4f46e5;padding:16px;margin:20px 0;border-radius:4px;'><p style='margin:0 0 8px;font-weight:600;color:#1a1a1a;'>🤖 AI 初步解答</p><p style='margin:0;color:#444;font-size:15px;line-height:1.7;'>${pa}</p></div><div style='background:#f8fafc;border-left:4px solid #1a73e8;padding:16px;margin:20px 0;border-radius:4px;'><p style='margin:0 0 8px;font-weight:600;color:#1a1a1a;'>📦 精选学习资料</p><ul style='margin:0;padding-left:20px;line-height:2;'>${rl}</ul></div><p style='font-style:italic;background:#fafafa;padding:12px 16px;border-radius:8px;color:#555;'>「${cl.reply_hint}」</p><p style='color:#444;font-size:16px;line-height:1.6;'>欢迎加入 GDG 社区，与更多开发者保持连接！</p><hr style='border:none;border-top:1px solid #e4e4e7;margin:20px 0 12px;'><p style='color:#999;font-size:13px;margin:0;'>Best regards,<br>GDG 活动团队 · Powered by n8n × Gemini</p></div></body></html>`;\nreturn [{json:{...input,topic:cl.topic,urgency:cl.urgency,summary:cl.summary,tags:cl.tags,question_type:cl.question_type,preliminary_answer:pa,reply_hint:cl.reply_hint,topicLabel:td.label,feishuCard,emailHtml,hasEmail:!!(email&&email.trim())}}];"
+      },
+      "id": "node-04",
+      "name": "解析与映射",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_FEISHU_WEBHOOK_TOKEN",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.feishuCard }}",
+        "options": {}
+      },
+      "id": "node-05",
+      "name": "飞书通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [{ "id": "email-check", "leftValue": "={{ $json.hasEmail }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-06",
+      "name": "有邮箱?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 400]
+    },
+    {
+      "parameters": {
+        "fromEmail": "GDG 活动团队 <你的邮箱@gmail.com>",
+        "toEmail": "={{ $json._email }}",
+        "subject": "=🤖 {{ $json._name }}，你的提问「{{ $json.summary }}」— AI 解答 + 专属资料",
+        "emailFormat": "html",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "node-07",
+      "name": "发送资料邮件",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1620, 280]
+    }
+  ],
+  "connections": {
+    "填写表单":   { "main": [[{ "node": "构建请求",   "type": "main", "index": 0 }]] },
+    "构建请求":   { "main": [[{ "node": "Gemini 分析", "type": "main", "index": 0 }]] },
+    "Gemini 分析": { "main": [[{ "node": "解析与映射", "type": "main", "index": 0 }]] },
+    "解析与映射": { "main": [[{ "node": "飞书通知",   "type": "main", "index": 0 }]] },
+    "飞书通知":   { "main": [[{ "node": "有邮箱?",    "type": "main", "index": 0 }]] },
+    "有邮箱?": {
+      "main": [
+        [{ "node": "发送资料邮件", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" }
+}
